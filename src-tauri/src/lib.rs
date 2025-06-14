@@ -181,7 +181,7 @@ async fn load_config() -> Result<Config, String> {
 }
 
 #[tauri::command]
-async fn stream_ai_response(query: String, window: Window) -> Result<(), String> {
+async fn ai_request(query: String, window: Window) -> Result<(), String> {
     let config = load_config().await.unwrap_or_default();
 
     let api_key = match config.ai_service.as_str() {
@@ -194,12 +194,41 @@ async fn stream_ai_response(query: String, window: Window) -> Result<(), String>
 
     let client = reqwest::Client::new();
 
+    // Create a comprehensive system prompt to give context to the AI
+    let system_prompt = format!(
+        "You are Lumina, an intelligent desktop search assistant integrated into a user's Linux desktop environment. \
+        
+Your role is to:
+- Help users find information, answer questions, and assist with various tasks
+- Provide practical, actionable advice when users ask for help
+- Answer questions about technology, programming, general knowledge, and daily tasks
+- Keep responses concise but comprehensive when needed
+- Use proper markdown formatting for better readability (headings, lists, code blocks, etc.)
+- Focus on being helpful and accurate
+- When discussing files, applications, or system tasks, consider that the user is on a Linux system
+        
+The user is searching from their desktop launcher, so they may ask about:
+- How to use applications or system features
+- Technical questions about programming, computers, or software
+- General knowledge questions
+- Task-specific help and tutorials
+- File management and system administration
+        
+Format your responses with markdown when appropriate. Be helpful, accurate, and concise."
+    );
+
     let request_body = OpenRouterRequest {
         model: config.default_model.clone(),
-        messages: vec![Message {
-            role: "user".to_string(),
-            content: query,
-        }],
+        messages: vec![
+            Message {
+                role: "system".to_string(),
+                content: system_prompt.to_string(),
+            },
+            Message {
+                role: "user".to_string(),
+                content: query,
+            }
+        ],
         stream: true,
     };
 
@@ -224,13 +253,20 @@ async fn stream_ai_response(query: String, window: Window) -> Result<(), String>
     }
 
     let mut stream = response.bytes_stream();
-    let mut accumulated_content = String::new();
+    let mut buffer = String::new();
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| e.to_string())?;
         let chunk_str = String::from_utf8_lossy(&chunk);
+        buffer.push_str(&chunk_str);
 
-        for line in chunk_str.lines() {
+        // Process complete lines
+        let mut start = 0;
+        while let Some(newline_pos) = buffer[start..].find('\n') {
+            let absolute_pos = start + newline_pos;
+            let line = buffer[start..absolute_pos].trim();
+            start = absolute_pos + 1;
+
             if line.starts_with("data: ") {
                 let data = &line[6..];
                 if data == "[DONE]" {
@@ -241,23 +277,29 @@ async fn stream_ai_response(query: String, window: Window) -> Result<(), String>
                     if let Some(choice) = response.choices.first() {
                         if let Some(delta) = &choice.delta {
                             if let Some(content) = &delta.content {
-                                accumulated_content.push_str(content);
-
-                                // Emit update to frontend
-                                window
-                                    .emit("ai_response_chunk", content)
-                                    .map_err(|e| e.to_string())?;
+                                // Clean content before sending
+                                let cleaned_content = content.replace("\r", "");
+                                if !cleaned_content.is_empty() {
+                                    window
+                                        .emit("ai_response_chunk", &cleaned_content)
+                                        .map_err(|e| e.to_string())?;
+                                }
                             }
                         }
                     }
                 }
             }
         }
+        
+        // Remove processed part of buffer
+        if start > 0 {
+            buffer = buffer[start..].to_string();
+        }
     }
 
     // Emit completion event
     window
-        .emit("ai_response_complete", &accumulated_content)
+        .emit("ai_response_complete", ())
         .map_err(|e| e.to_string())?;
 
     Ok(())
@@ -410,9 +452,9 @@ async fn execute_action(result: SearchResult, window: Window) -> Result<String, 
             Ok("Copied to clipboard".to_string())
         }
         ActionType::AiResponse => {
-            // Start streaming AI response
+            // Start AI response
             tokio::spawn(async move {
-                if let Err(e) = stream_ai_response(result.action_data, window).await {
+                if let Err(e) = ai_request(result.action_data, window).await {
                     eprintln!("AI response error: {}", e);
                 }
             });
@@ -465,7 +507,7 @@ pub fn run() {
             execute_action,
             get_config,
             save_config,
-            stream_ai_response
+            ai_request
         ])
         .setup(|app| {
             // Show the window on startup
@@ -473,8 +515,25 @@ pub fn run() {
                 let _ = window.show();
                 let _ = window.set_focus();
 
-                // Center the window on screen
-                let _ = window.center();
+                let window_width = 700;
+                let window_height = 600;
+                
+                if let Ok(monitor) = window.current_monitor() {
+                    if let Some(monitor) = monitor {
+                        let monitor_size = monitor.size();
+                        
+                        // Center horizontally
+                        let x = (monitor_size.width as i32 - window_width) / 2;
+                        
+                        // Position vertically between top and center (at 1/4 of screen height)
+                        let y = monitor_size.height as i32 / 4;
+                        
+                        println!("Monitor size: {:?}", monitor_size);
+                        println!("Positioning window at: x={}, y={}", x, y);
+                        
+                        let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }));
+                    }
+                }
             }
             Ok(())
         })

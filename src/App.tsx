@@ -2,29 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./App.css";
-
-interface SearchResult {
-  id: string;
-  title: string;
-  description: string;
-  icon?: string;
-  action_type:
-    | "OpenFile"
-    | "OpenApp"
-    | "OpenUrl"
-    | "CopyToClipboard"
-    | "AiResponse";
-  action_data: string;
-  score: number;
-}
-
-interface Config {
-  ai_service: string;
-  openrouter_api_key?: string;
-  openai_api_key?: string;
-  default_model: string;
-  search_directories: string[];
-}
+import SearchBar from "./components/SearchBar";
+import SearchResultItem from "./components/SearchResultItem";
+import AiResponseDisplay from "./components/AiResponseDisplay";
+import { SearchResult, Config } from "./types";
 
 function App() {
   const [query, setQuery] = useState("");
@@ -36,6 +17,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [config, setConfig] = useState<Config | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [showContent, setShowContent] = useState(false);
 
   // Load configuration on startup
   useEffect(() => {
@@ -55,7 +37,15 @@ function App() {
     const setupListeners = async () => {
       await listen("ai_response_chunk", (event) => {
         const chunk = event.payload as string;
-        setAiResponse((prev) => prev + chunk);
+        // Clean chunk before adding to prevent repeated text
+        const cleanChunk = chunk.replace(/\r/g, "");
+        setAiResponse((prev) => {
+          // Prevent duplicate chunks by checking if the chunk is already at the end
+          if (prev.endsWith(cleanChunk)) {
+            return prev;
+          }
+          return prev + cleanChunk;
+        });
       });
 
       await listen("ai_response_complete", () => {
@@ -71,6 +61,7 @@ function App() {
     const searchTimeout = setTimeout(async () => {
       if (query.trim()) {
         setIsLoading(true);
+        setShowContent(true);
         try {
           const searchResults: SearchResult[] = await invoke("search", {
             query,
@@ -85,11 +76,14 @@ function App() {
       } else {
         setResults([]);
         setSelectedIndex(0);
+        if (!aiResponse && !isAiStreaming) {
+          setShowContent(false);
+        }
       }
-    }, 300); // Debounce search
+    }, 300);
 
     return () => clearTimeout(searchTimeout);
-  }, [query]);
+  }, [query, aiResponse, isAiStreaming]);
 
   // Focus input when component mounts
   useEffect(() => {
@@ -98,16 +92,20 @@ function App() {
     }
   }, []);
 
+  // Refocus input when query is cleared to allow continuous typing
+  useEffect(() => {
+    if (!query && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [query]);
+
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = async (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         try {
-          // For now, just clear the query instead of hiding the window
-          // since we don't have global hotkeys implemented yet
           setQuery("");
           setResults([]);
-          // await invoke("hide_window");
         } catch (error) {
           console.error("Failed to hide window:", error);
         }
@@ -123,7 +121,6 @@ function App() {
           await executeAction(results[selectedIndex]);
         }
       } else if (event.ctrlKey && event.key === ",") {
-        // Ctrl+, to open settings
         event.preventDefault();
         setShowSettings(true);
       }
@@ -138,7 +135,7 @@ function App() {
       if (result.action_type === "AiResponse") {
         setAiResponse("");
         setIsAiStreaming(true);
-        // Clear results to show AI response
+        setShowContent(true);
         setResults([]);
         setQuery("");
       }
@@ -146,22 +143,59 @@ function App() {
       const response = await invoke("execute_action", { result });
       console.log("Action executed:", response);
 
-      // Clear query and hide window after action (except for AI)
       if (result.action_type !== "AiResponse") {
         setQuery("");
         setResults([]);
+        setShowContent(false);
       }
-      // Optionally hide window: await invoke("hide_window");
     } catch (error) {
       console.error("Failed to execute action:", error);
       setIsAiStreaming(false);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleNewAiQuery = () => {
+    setAiResponse("");
+    setIsAiStreaming(false);
+    setShowContent(false);
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  };
+
+  const handleResultClick = (result: SearchResult) => {
+    if (
+      result.action_type === "OpenUrl" ||
+      result.action_type === "OpenFile" ||
+      result.action_type === "OpenApp"
+    ) {
+      invoke("open_path", { path: result.action_data });
+    } else if (result.action_type === "CopyToClipboard") {
+      navigator.clipboard.writeText(result.action_data);
+    }
+  };
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Handle search submission
-    console.log("Search query:", query);
+    if (query.startsWith("/")) {
+      setIsLoading(true);
+      setIsAiStreaming(true);
+      setAiResponse("");
+      setShowContent(true);
+      try {
+        await invoke("ai_request", { query: query.substring(1) });
+      } catch (error) {
+        console.error("AI request failed:", error);
+        setAiResponse("Error: Could not process AI request.");
+        setIsAiStreaming(false);
+      }
+    } else if (results.length > 0 && selectedIndex < results.length) {
+      const selectedResult = results[selectedIndex];
+      if (selectedResult) {
+        handleResultClick(selectedResult);
+      }
+    }
+    inputRef.current?.focus();
   };
 
   const saveConfig = async (newConfig: Config) => {
@@ -176,22 +210,36 @@ function App() {
 
   if (showSettings && config) {
     return (
-      <div className="app-background">
-        <div className="settings-page">
-          <div className="settings-container">
-            <div className="settings-header">
-              <button
-                onClick={() => setShowSettings(false)}
-                className="back-button"
+      <div className="fixed inset-0 bg-transparent flex items-center justify-center p-4 z-50">
+        <div className="w-full max-w-md bg-slate-800/95 backdrop-blur-2xl border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+          <div className="p-4 border-b border-slate-700 flex items-center justify-between shrink-0">
+            <button
+              onClick={() => setShowSettings(false)}
+              className="text-slate-300 hover:text-white transition-colors p-2 rounded-md hover:bg-slate-700/50 text-sm flex items-center gap-2"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="w-5 h-5"
               >
-                ← Back
-              </button>
-              <h1 className="settings-title">Settings</h1>
-            </div>
+                <path
+                  fillRule="evenodd"
+                  d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </button>
+            <h1 className="text-xl font-semibold text-white">Settings</h1>
+            <div className="w-12"></div>
+          </div>
 
-            <div className="settings-form">
+          <div className="p-6 overflow-y-auto flex-grow">
+            <div className="space-y-6">
               <div className="form-group">
-                <label className="form-label">OpenRouter API Key</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">
+                  OpenRouter API Key
+                </label>
                 <input
                   type="password"
                   value={config.openrouter_api_key || ""}
@@ -199,14 +247,15 @@ function App() {
                     setConfig({ ...config, openrouter_api_key: e.target.value })
                   }
                   placeholder="Enter your OpenRouter API key"
-                  className="form-input"
+                  className="w-full bg-slate-700/50 border border-slate-600 text-white placeholder-slate-400 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 p-2.5 shadow-sm"
                 />
-                <p className="form-hint">
+                <p className="mt-2 text-xs text-slate-400">
                   Get your API key from{" "}
                   <a
                     href="https://openrouter.ai"
                     target="_blank"
                     rel="noopener noreferrer"
+                    className="font-medium text-indigo-400 hover:text-indigo-300"
                   >
                     openrouter.ai
                   </a>
@@ -214,13 +263,15 @@ function App() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Default Model</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">
+                  Default Model
+                </label>
                 <select
                   value={config.default_model}
                   onChange={(e) =>
                     setConfig({ ...config, default_model: e.target.value })
                   }
-                  className="form-select"
+                  className="w-full bg-slate-700/50 border border-slate-600 text-white text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 p-2.5 shadow-sm"
                 >
                   <option value="anthropic/claude-3.5-sonnet">
                     Claude 3.5 Sonnet
@@ -231,12 +282,15 @@ function App() {
                     Llama 3.2 90B
                   </option>
                   <option value="google/gemma-2-9b-it:free">Gemma 2 9B</option>
+                  <option value="deepseek/deepseek-chat-v3-0324:free">
+                    DeepSeek Chat V3
+                  </option>
                 </select>
               </div>
 
               <button
                 onClick={() => saveConfig(config)}
-                className="save-button"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-4 rounded-lg shadow-md transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-800"
               >
                 Save Settings
               </button>
@@ -248,215 +302,57 @@ function App() {
   }
 
   return (
-    <div className="app-background">
-      <div className="lumina-container">
-        <div className="glass-window">
-          {/* Header */}
-          <div className="header-area">
-            <div className="lumina-logo">
-              <div className="lumina-logo-icon">✨</div>
-              <span>Lumina</span>
-            </div>
-            <button
-              onClick={() => setShowSettings(true)}
-              className="settings-button"
-              title="Settings (Ctrl+,)"
-            >
-              <span>⚙️</span>
-              <span>Settings</span>
-            </button>
-          </div>
+    <div className="flex w-full flex-col h-screen bg-transparent text-white">
+      <div className="w-full max-w-2xl mx-auto flex flex-col space-y-0">
+        <SearchBar
+          query={query}
+          onQueryChange={setQuery}
+          onSubmit={handleFormSubmit}
+          inputRef={inputRef}
+          isInitialEmptyState={!showContent && !query}
+          onSettingsClick={() => setShowSettings(true)}
+        />
 
-          {/* Search Input */}
-          <div className="search-area">
-            <form onSubmit={handleSubmit}>
-              <div className="search-input-container">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search anything..."
-                  className="search-input"
-                  autoComplete="off"
-                />
-                {query && (
-                  <button
-                    type="button"
-                    onClick={() => setQuery("")}
-                    className="clear-button"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            </form>
-          </div>
+        {isLoading && !isAiStreaming && (
+          <div className="text-center p-4">Loading...</div>
+        )}
 
-          {/* Content Area */}
-          <div className="content-area">
-            {/* AI Response Display */}
-            {(isAiStreaming || aiResponse) && (
-              <div className="ai-response fade-in-up">
-                <div className="ai-response-header">
-                  <div className="result-icon">🤖</div>
-                  <span style={{ fontWeight: 600, color: "#10b981" }}>
-                    AI Response
-                  </span>
-                  {isAiStreaming && (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        fontSize: "12px",
-                        color: "rgba(255, 255, 255, 0.6)",
-                      }}
-                    >
-                      <div className="loading-dots">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                      </div>
-                      <span>Thinking...</span>
-                    </div>
-                  )}
-                </div>
-                <div className="ai-response-content">
-                  {aiResponse && (
-                    <div style={{ whiteSpace: "pre-wrap" }}>{aiResponse}</div>
-                  )}
-                  {isAiStreaming && !aiResponse && (
-                    <div
-                      style={{
-                        color: "rgba(255, 255, 255, 0.6)",
-                        fontStyle: "italic",
-                      }}
-                    >
-                      Waiting for response...
-                    </div>
-                  )}
-                </div>
-                {aiResponse && !isAiStreaming && (
-                  <div className="ai-response-actions">
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(aiResponse);
-                      }}
-                      className="ai-action-button"
-                    >
-                      <span>📋</span>
-                      <span>Copy</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setAiResponse("");
-                        if (inputRef.current) {
-                          inputRef.current.focus();
-                        }
-                      }}
-                      className="ai-action-button"
-                    >
-                      <span>🔄</span>
-                      <span>New Query</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Results Area */}
-            <div>
-              {isLoading ? (
-                <div className="loading-container fade-in">
-                  <div className="loading-dots">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                  </div>
-                  <div className="loading-text">Searching for "{query}"...</div>
-                </div>
-              ) : results.length > 0 ? (
-                <div className="fade-in">
+        {showContent && (
+          <div className="overflow-y-auto p-2 flex-grow mt-2 bg-slate-800/50 backdrop-blur-md rounded-xl shadow-2xl max-h-[calc(100vh-200px)]">
+            {isAiStreaming || aiResponse ? (
+              <AiResponseDisplay
+                aiResponse={aiResponse}
+                isAiStreaming={isAiStreaming}
+                onCopy={() => {
+                  navigator.clipboard.writeText(aiResponse);
+                }}
+                onNewQuery={handleNewAiQuery}
+              />
+            ) : (
+              results.length > 0 && (
+                <ul className="space-y-px">
                   {results.map((result, index) => (
-                    <div
+                    <SearchResultItem
                       key={result.id}
-                      className={`result-item ${
-                        index === selectedIndex ? "selected" : ""
-                      }`}
-                      onClick={() => executeAction(result)}
-                    >
-                      {result.icon && (
-                        <div className="result-icon">{result.icon}</div>
-                      )}
-                      <div className="result-content">
-                        <div className="result-title">{result.title}</div>
-                        <div className="result-description">
-                          {result.description}
-                        </div>
-                      </div>
-                      <div className="action-badge">
-                        {result.action_type.replace(/([A-Z])/g, " $1").trim()}
-                      </div>
-                    </div>
+                      result={result}
+                      isSelected={index === selectedIndex}
+                      onClick={() => handleResultClick(result)}
+                    />
                   ))}
-                  <div className="navigation-hint">
-                    <div className="shortcut-item">
-                      <span className="kbd">↑↓</span>
-                      <span>Navigate</span>
-                    </div>
-                    <div className="shortcut-item">
-                      <span className="kbd">Enter</span>
-                      <span>Select</span>
-                    </div>
-                    <div className="shortcut-item">
-                      <span className="kbd">Esc</span>
-                      <span>Clear</span>
-                    </div>
-                  </div>
+                </ul>
+              )
+            )}
+            {!isLoading &&
+              !isAiStreaming &&
+              !aiResponse &&
+              results.length === 0 &&
+              query && (
+                <div className="p-4 text-center text-slate-400">
+                  No results found.
                 </div>
-              ) : query ? (
-                <div className="empty-state fade-in">
-                  <div className="empty-state-icon">🔍</div>
-                  <div className="empty-state-title">No results found</div>
-                  <div className="empty-state-subtitle">
-                    No matches for "{query}"
-                  </div>
-                  <div
-                    className="empty-state-subtitle"
-                    style={{ marginTop: "12px", fontSize: "12px" }}
-                  >
-                    Try searching for files, apps, math expressions, or ask a
-                    question
-                  </div>
-                </div>
-              ) : !isAiStreaming && !aiResponse ? (
-                <div className="empty-state fade-in">
-                  <div className="empty-state-icon">✨</div>
-                  <div className="empty-state-title">Welcome to Lumina</div>
-                  <div className="empty-state-subtitle">
-                    Start typing to search
-                  </div>
-                  <div className="empty-state-features">
-                    <div>• Files and applications</div>
-                    <div>• Math expressions (e.g., "2+2")</div>
-                    <div>• AI questions (e.g., "How to center a div?")</div>
-                  </div>
-                  <div className="empty-state-shortcuts">
-                    <div className="shortcut-item">
-                      <span className="kbd">Ctrl+,</span>
-                      <span>Settings</span>
-                    </div>
-                    <div className="shortcut-item">
-                      <span className="kbd">Escape</span>
-                      <span>Clear</span>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </div>
+              )}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
