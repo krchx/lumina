@@ -14,27 +14,36 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
 }) => {
   return (
     <div
-      className={`group flex items-center gap-3 p-3.5 m-1.5 rounded-xl border border-slate-700/80 bg-slate-800/50 backdrop-blur-sm cursor-pointer transition-all duration-200 ease-out hover:bg-slate-700/70 hover:border-slate-600/90 hover:shadow-lg hover:-translate-y-0.5 ${
+      className={`group flex items-center gap-3 p-4 m-1 rounded-2xl glass-button-stable cursor-pointer ease-out hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-400/50 animate-fadeInUp ${
         isSelected
-          ? "bg-indigo-600/30 border-indigo-500/70 ring-1 ring-indigo-500/50 shadow-xl -translate-y-0.5"
+          ? "bg-blue-100/40 border-blue-300/50 ring-2 ring-blue-400/30 shadow-lg scale-[1.02]"
           : ""
       }`}
       onClick={onClick}
+      role="button"
+      tabIndex={0}
+      aria-label={`${result.title} - ${result.description}`}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
     >
       {result.icon && (
-        <div className="w-7 h-7 flex items-center justify-center text-lg rounded-md bg-slate-700/50 group-hover:bg-slate-600/50 transition-colors">
+        <div className="w-8 h-8 flex items-center justify-center text-lg rounded-xl bg-white/30 group-hover:bg-white/40 transition-colors backdrop-blur-sm">
           {result.icon}
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <div className="font-semibold text-sm text-slate-100 truncate group-hover:text-white transition-colors">
+        <div className="font-semibold text-sm text-gray-800 truncate group-hover:text-gray-900 transition-colors">
           {result.title}
         </div>
-        <div className="text-xs text-slate-400 truncate group-hover:text-slate-300 transition-colors">
+        <div className="text-xs text-gray-600 truncate group-hover:text-gray-700 transition-colors">
           {result.description}
         </div>
       </div>
-      <div className="ml-2 px-2.5 py-1 rounded-md bg-slate-700/60 border border-slate-600/70 text-[10px] font-semibold uppercase tracking-wider text-slate-300 group-hover:text-slate-200 transition-colors whitespace-nowrap">
+      <div className="ml-2 px-3 py-1.5 rounded-xl bg-white/30 border border-white/20 text-[10px] font-semibold uppercase tracking-wider text-gray-700 group-hover:text-gray-800 group-hover:bg-white/40 transition-all whitespace-nowrap backdrop-blur-sm">
         {result.action_type.replace(/([A-Z])/g, " $1").trim()}
       </div>
     </div>

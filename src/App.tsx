@@ -5,6 +5,7 @@ import "./App.css";
 import SearchBar from "./components/SearchBar";
 import SearchResultItem from "./components/SearchResultItem";
 import AiResponseDisplay from "./components/AiResponseDisplay";
+import SettingsComponent from "./components/SettingsComponent";
 import { SearchResult, Config } from "./types";
 
 function App() {
@@ -62,17 +63,30 @@ function App() {
       if (query.trim()) {
         setIsLoading(true);
         setShowContent(true);
+
+        // Minimum loading time to prevent flickering
+        const searchStartTime = Date.now();
+        const minLoadingTime = 200;
+
         try {
           const searchResults: SearchResult[] = await invoke("search", {
             query,
           });
-          setResults(searchResults);
-          setSelectedIndex(0);
+
+          // Ensure minimum loading time has passed
+          const elapsedTime = Date.now() - searchStartTime;
+          const remainingTime = Math.max(0, minLoadingTime - elapsedTime);
+
+          setTimeout(() => {
+            setResults(searchResults);
+            setSelectedIndex(0);
+            setIsLoading(false);
+          }, remainingTime);
         } catch (error) {
           console.error("Search failed:", error);
           setResults([]);
+          setIsLoading(false);
         }
-        setIsLoading(false);
       } else {
         setResults([]);
         setSelectedIndex(0);
@@ -80,7 +94,7 @@ function App() {
           setShowContent(false);
         }
       }
-    }, 300);
+    }, 500); // Increased delay from 300ms to 500ms for better UX
 
     return () => clearTimeout(searchTimeout);
   }, [query, aiResponse, isAiStreaming]);
@@ -210,100 +224,18 @@ function App() {
 
   if (showSettings && config) {
     return (
-      <div className="fixed inset-0 bg-transparent flex items-center justify-center p-4 z-50">
-        <div className="w-full max-w-md bg-slate-800/95 backdrop-blur-2xl border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-slate-700 flex items-center justify-between shrink-0">
-            <button
-              onClick={() => setShowSettings(false)}
-              className="text-slate-300 hover:text-white transition-colors p-2 rounded-md hover:bg-slate-700/50 text-sm flex items-center gap-2"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                className="w-5 h-5"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </button>
-            <h1 className="text-xl font-semibold text-white">Settings</h1>
-            <div className="w-12"></div>
-          </div>
-
-          <div className="p-6 overflow-y-auto flex-grow">
-            <div className="space-y-6">
-              <div className="form-group">
-                <label className="block text-sm font-medium text-slate-300 mb-1">
-                  OpenRouter API Key
-                </label>
-                <input
-                  type="password"
-                  value={config.openrouter_api_key || ""}
-                  onChange={(e) =>
-                    setConfig({ ...config, openrouter_api_key: e.target.value })
-                  }
-                  placeholder="Enter your OpenRouter API key"
-                  className="w-full bg-slate-700/50 border border-slate-600 text-white placeholder-slate-400 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 p-2.5 shadow-sm"
-                />
-                <p className="mt-2 text-xs text-slate-400">
-                  Get your API key from{" "}
-                  <a
-                    href="https://openrouter.ai"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-medium text-indigo-400 hover:text-indigo-300"
-                  >
-                    openrouter.ai
-                  </a>
-                </p>
-              </div>
-
-              <div className="form-group">
-                <label className="block text-sm font-medium text-slate-300 mb-1">
-                  Default Model
-                </label>
-                <select
-                  value={config.default_model}
-                  onChange={(e) =>
-                    setConfig({ ...config, default_model: e.target.value })
-                  }
-                  className="w-full bg-slate-700/50 border border-slate-600 text-white text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 p-2.5 shadow-sm"
-                >
-                  <option value="anthropic/claude-3.5-sonnet">
-                    Claude 3.5 Sonnet
-                  </option>
-                  <option value="openai/gpt-4o">GPT-4o</option>
-                  <option value="google/gemini-pro-1.5">Gemini Pro 1.5</option>
-                  <option value="meta-llama/llama-3.2-90b-vision-instruct">
-                    Llama 3.2 90B
-                  </option>
-                  <option value="google/gemma-2-9b-it:free">Gemma 2 9B</option>
-                  <option value="deepseek/deepseek-chat-v3-0324:free">
-                    DeepSeek Chat V3
-                  </option>
-                </select>
-              </div>
-
-              <button
-                onClick={() => saveConfig(config)}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-4 rounded-lg shadow-md transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-800"
-              >
-                Save Settings
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <SettingsComponent
+        config={config}
+        onConfigChange={setConfig}
+        onSave={saveConfig}
+        onClose={() => setShowSettings(false)}
+      />
     );
   }
 
   return (
-    <div className="flex w-full flex-col h-screen bg-transparent text-white">
-      <div className="w-full max-w-2xl mx-auto flex flex-col space-y-0">
+    <div className="flex w-full flex-col h-screen bg-transparent text-gray-800 relative">
+      <div className="w-full h-full m-3 max-w-2xl mx-auto flex flex-col space-y-0 relative">
         <SearchBar
           query={query}
           onQueryChange={setQuery}
@@ -313,12 +245,19 @@ function App() {
           onSettingsClick={() => setShowSettings(true)}
         />
 
-        {isLoading && !isAiStreaming && (
-          <div className="text-center p-4">Loading...</div>
-        )}
+        {/* {isLoading && !isAiStreaming && (
+          <div className="text-center p-4 text-gray-600 loading-fade-in">
+            <div className="flex items-center justify-center gap-2">
+              <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-pulse"></div>
+              <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-pulse delay-150"></div>
+              <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-pulse delay-300"></div>
+              <span className="ml-2">Searching...</span>
+            </div>
+          </div>
+        )} */}
 
         {showContent && (
-          <div className="overflow-y-auto p-2 flex-grow mt-2 bg-slate-800/50 backdrop-blur-md rounded-xl shadow-2xl max-h-[calc(100vh-200px)]">
+          <div className="overflow-y-auto p-3 flex-grow mt-3 glass-panel-enhanced rounded-3xl max-h-[calc(100vh-120px)] content-fade-in">
             {isAiStreaming || aiResponse ? (
               <AiResponseDisplay
                 aiResponse={aiResponse}
@@ -330,14 +269,21 @@ function App() {
               />
             ) : (
               results.length > 0 && (
-                <ul className="space-y-px">
+                <ul className="space-y-2">
                   {results.map((result, index) => (
-                    <SearchResultItem
+                    <li
                       key={result.id}
-                      result={result}
-                      isSelected={index === selectedIndex}
-                      onClick={() => handleResultClick(result)}
-                    />
+                      style={{
+                        animationDelay: `${index * 0.05}s`,
+                        animation: "fadeInUp 0.3s ease-out forwards",
+                      }}
+                    >
+                      <SearchResultItem
+                        result={result}
+                        isSelected={index === selectedIndex}
+                        onClick={() => handleResultClick(result)}
+                      />
+                    </li>
                   ))}
                 </ul>
               )
@@ -347,7 +293,7 @@ function App() {
               !aiResponse &&
               results.length === 0 &&
               query && (
-                <div className="p-4 text-center text-slate-400">
+                <div className="p-4 text-center text-gray-500 loading-fade-in">
                   No results found.
                 </div>
               )}

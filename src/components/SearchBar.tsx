@@ -17,9 +17,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   onSettingsClick,
 }) => {
   return (
-    <div
-      className={`relative px-2 py-2 bg-slate-600 backdrop-blur-md rounded-xl shadow-2xl`}
-    >
+    <div className="relative px-3 py-3 glass-panel-enhanced rounded-3xl">
       <form onSubmit={onSubmit}>
         <div className="relative">
           <input
@@ -28,10 +26,10 @@ const SearchBar: React.FC<SearchBarProps> = ({
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             placeholder="Search anything or type '/' for AI"
-            className={`w-full bg-slate-700 bg-opacity-30 border border-slate-600 border-opacity-70 text-white placeholder-slate-400 text-base font-normal py-3 px-4 pr-16 outline-none transition-all duration-300 ease-out shadow-md hover:border-slate-500 hover:border-opacity-80 focus:border-gray-900 focus:border-opacity-70 focus:bg-slate-700 focus:bg-opacity-60 focus:shadow-xl focus:ring-1 focus:ring-gray-900 focus:ring-opacity-40 rounded-md`}
+            className="w-full glass-input text-gray-800 placeholder-gray-500 text-base font-normal py-4 px-5 pr-20 outline-none transition-all duration-300 ease-out rounded-2xl focus:shadow-lg focus:ring-2 focus:ring-blue-400/30 focus:border-blue-300/50"
             autoComplete="off"
           />
-          <div className="absolute right-2.5 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
+          <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
             {query && (
               <button
                 type="button"
@@ -39,7 +37,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
                   onQueryChange("");
                   inputRef.current?.focus();
                 }}
-                className="bg-slate-600 bg-opacity-50 hover:bg-slate-500 hover:bg-opacity-60 text-slate-300 hover:text-white rounded-full w-6 h-6 flex items-center justify-center transition-colors text-xs"
+                className="glass-button-stable hover:bg-red-100/30 text-gray-600 hover:text-gray-800 rounded-full w-7 h-7 flex items-center justify-center text-sm"
               >
                 ✕
               </button>
@@ -47,7 +45,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
             <button
               type="button"
               onClick={onSettingsClick}
-              className="text-slate-400 hover:text-white transition-colors p-1 rounded-md hover:bg-slate-600/50 flex items-center justify-center"
+              className="glass-button-stable text-gray-600 hover:text-gray-800 p-2 rounded-xl flex items-center justify-center"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"

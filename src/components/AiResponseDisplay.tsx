@@ -28,17 +28,17 @@ const AiResponseDisplay: React.FC<AiResponseDisplayProps> = ({
   }
 
   return (
-    <div className="bg-emerald-900/70 border border-emerald-500/30 rounded-xl p-5 mb-5 backdrop-blur-md relative overflow-hidden animate-fadeInUp">
-      <div className="flex items-center justify-between mb-3">
+    <div className="glass-panel border-green-200/30 rounded-2xl p-6 mb-5 relative overflow-hidden animate-fadeInUp">
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className="text-xl">🤖</div>
-          <span className="font-semibold text-blue-400">AI Response</span>
+          <span className="font-semibold text-green-700">AI Response</span>
           {isAiStreaming && (
-            <div className="flex items-center gap-2 text-xs text-slate-400">
+            <div className="flex items-center gap-2 text-xs text-gray-600">
               <div className="flex space-x-1">
-                <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-pulse delay-0"></span>
-                <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-pulse delay-150"></span>
-                <span className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-pulse delay-300"></span>
+                <span className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-pulse delay-0"></span>
+                <span className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-pulse delay-150"></span>
+                <span className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-pulse delay-300"></span>
               </div>
               <span>Thinking...</span>
             </div>
@@ -48,7 +48,7 @@ const AiResponseDisplay: React.FC<AiResponseDisplayProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={onCopy}
-              className="flex items-center gap-1.5 bg-slate-700/50 hover:bg-slate-600/60 border border-slate-600/70 text-slate-300 hover:text-white text-xs px-2.5 py-1.5 rounded-md transition-colors"
+              className="glass-button-stable flex items-center gap-1.5 text-gray-700 hover:text-gray-800 text-xs px-3 py-2 rounded-xl"
               title="Copy"
             >
               <svg
@@ -64,7 +64,7 @@ const AiResponseDisplay: React.FC<AiResponseDisplayProps> = ({
             </button>
             <button
               onClick={onNewQuery}
-              className="flex items-center gap-1.5 bg-slate-700/50 hover:bg-slate-600/60 border border-slate-600/70 text-slate-300 hover:text-white text-xs px-2.5 py-1.5 rounded-md transition-colors"
+              className="glass-button-stable flex items-center gap-1.5 text-gray-700 hover:text-gray-800 text-xs px-3 py-2 rounded-xl"
               title="New Query"
             >
               <svg
@@ -84,55 +84,59 @@ const AiResponseDisplay: React.FC<AiResponseDisplayProps> = ({
           </div>
         )}
       </div>
-      <div className="text-slate-200 text-sm leading-relaxed break-words selection:bg-emerald-400/30 selection:text-emerald-100 prose prose-invert prose-sm max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+      <div className="text-gray-800 text-sm leading-relaxed break-words selection:bg-blue-400/30 selection:text-blue-800 prose prose-sm max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
         {aiResponse && (
           <ReactMarkdown
             components={{
               // Custom components for better styling
               h1: ({ children }) => (
-                <h1 className="text-2xl font-bold mt-4 mb-2 first:mt-0">
+                <h1 className="text-2xl font-bold mt-4 mb-2 first:mt-0 text-gray-800">
                   {children}
                 </h1>
               ),
               h2: ({ children }) => (
-                <h2 className="text-xl font-semibold mt-4 mb-2 first:mt-0">
+                <h2 className="text-xl font-semibold mt-4 mb-2 first:mt-0 text-gray-800">
                   {children}
                 </h2>
               ),
               h3: ({ children }) => (
-                <h3 className="text-lg font-semibold mt-4 mb-2 first:mt-0">
+                <h3 className="text-lg font-semibold mt-4 mb-2 first:mt-0 text-gray-800">
                   {children}
                 </h3>
               ),
-              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+              p: ({ children }) => (
+                <p className="mb-2 last:mb-0 text-gray-700">{children}</p>
+              ),
               code: ({ children, className }) => {
                 const isBlock = className?.includes("language-");
                 if (isBlock) {
                   return (
-                    <pre className="bg-slate-700 p-3 rounded-lg text-sm overflow-auto my-2">
-                      <code>{children}</code>
+                    <pre className="bg-gray-100/80 border border-gray-200/50 p-3 rounded-xl text-sm overflow-auto my-2 backdrop-blur-sm">
+                      <code className="text-gray-800">{children}</code>
                     </pre>
                   );
                 }
                 return (
-                  <code className="bg-slate-700 px-1.5 py-0.5 rounded text-sm">
+                  <code className="bg-gray-100/60 border border-gray-200/40 px-2 py-1 rounded-lg text-sm text-gray-800 backdrop-blur-sm">
                     {children}
                   </code>
                 );
               },
               ul: ({ children }) => (
-                <ul className="list-disc list-inside mb-2 space-y-1">
+                <ul className="list-disc list-inside mb-2 space-y-1 text-gray-700">
                   {children}
                 </ul>
               ),
               ol: ({ children }) => (
-                <ol className="list-decimal list-inside mb-2 space-y-1">
+                <ol className="list-decimal list-inside mb-2 space-y-1 text-gray-700">
                   {children}
                 </ol>
               ),
-              li: ({ children }) => <li className="mb-1">{children}</li>,
+              li: ({ children }) => (
+                <li className="mb-1 text-gray-700">{children}</li>
+              ),
               blockquote: ({ children }) => (
-                <blockquote className="border-l-4 border-slate-600 pl-4 italic my-2">
+                <blockquote className="border-l-4 border-gray-300 pl-4 italic my-2 text-gray-600 bg-gray-50/50 py-2 rounded-r-lg backdrop-blur-sm">
                   {children}
                 </blockquote>
               ),
@@ -142,7 +146,7 @@ const AiResponseDisplay: React.FC<AiResponseDisplayProps> = ({
           </ReactMarkdown>
         )}
         {isAiStreaming && !aiResponse && (
-          <div className="text-slate-400 italic">Waiting for response...</div>
+          <div className="text-gray-600 italic">Waiting for response...</div>
         )}
       </div>
     </div>

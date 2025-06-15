@@ -196,25 +196,25 @@ async fn ai_request(query: String, window: Window) -> Result<(), String> {
 
     // Create a comprehensive system prompt to give context to the AI
     let system_prompt = format!(
-        "You are Lumina, an intelligent desktop search assistant integrated into a user's Linux desktop environment. \
+        "You are Lumina, an intelligent desktop search assistant integrated into a user's Linux desktop environment.
         
-Your role is to:
-- Help users find information, answer questions, and assist with various tasks
-- Provide practical, actionable advice when users ask for help
-- Answer questions about technology, programming, general knowledge, and daily tasks
-- Keep responses concise but comprehensive when needed
-- Use proper markdown formatting for better readability (headings, lists, code blocks, etc.)
-- Focus on being helpful and accurate
-- When discussing files, applications, or system tasks, consider that the user is on a Linux system
-        
-The user is searching from their desktop launcher, so they may ask about:
-- How to use applications or system features
-- Technical questions about programming, computers, or software
-- General knowledge questions
-- Task-specific help and tutorials
-- File management and system administration
-        
-Format your responses with markdown when appropriate. Be helpful, accurate, and concise."
+            Your role is to:
+            - Help users find information, answer questions, and assist with various tasks
+            - Provide practical, actionable advice when users ask for help
+            - Answer questions about technology, programming, general knowledge, and daily tasks
+            - Keep responses concise but comprehensive when needed
+            - Use proper markdown formatting for better readability (headings, lists, code blocks, etc.)
+            - Focus on being helpful and accurate
+            - When discussing files, applications, or system tasks, consider that the user is on a Linux system
+                    
+            The user is searching from their desktop launcher, so they may ask about:
+            - How to use applications or system features
+            - Technical questions about programming, computers, or software
+            - General knowledge questions
+            - Task-specific help and tutorials
+            - File management and system administration
+                    
+            Format your responses with markdown when appropriate. Be helpful, accurate, and concise."
     );
 
     let request_body = OpenRouterRequest {
@@ -510,10 +510,8 @@ pub fn run() {
             ai_request
         ])
         .setup(|app| {
-            // Show the window on startup
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
+                // ...existing window setup...
 
                 let window_width = 700;
                 let window_height = 600;
@@ -527,9 +525,6 @@ pub fn run() {
                         
                         // Position vertically between top and center (at 1/4 of screen height)
                         let y = monitor_size.height as i32 / 4;
-                        
-                        println!("Monitor size: {:?}", monitor_size);
-                        println!("Positioning window at: x={}, y={}", x, y);
                         
                         let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }));
                     }
