@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event"; // Removed emit, appWindow
 import "./App.css";
 import SearchBar from "./components/SearchBar";
 import SearchResultItem from "./components/SearchResultItem";
@@ -55,6 +55,21 @@ function App() {
     };
 
     setupListeners();
+  }, []);
+
+  // Listen for window toggle events from the backend (e.g., single-instance plugin)
+  useEffect(() => {
+    const unlistenPromise = listen("toggle_window_event", async () => {
+      try {
+        console.log("toggle_window_event received in frontend");
+        await invoke("toggle_window");
+      } catch (error) {
+        console.error("Failed to toggle window from event:", error);
+      }
+    });
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
   }, []);
 
   // Search when query changes
@@ -120,6 +135,10 @@ function App() {
         try {
           setQuery("");
           setResults([]);
+          setAiResponse("");
+          setIsAiStreaming(false);
+          setShowContent(false);
+          await invoke("hide_window");
         } catch (error) {
           console.error("Failed to hide window:", error);
         }

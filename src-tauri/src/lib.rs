@@ -1,7 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tauri::{AppHandle, Emitter, Manager, Window};
+use tauri::{Emitter, Manager, PhysicalPosition, UserAttentionType, Window};
+use tokio::time::{sleep, Duration}; // Added tokio::time for sleep
 use tokio_stream::StreamExt;
+
+const DEFAULT_WINDOW_WIDTH: u32 = 700;
+const DEFAULT_WINDOW_HEIGHT: u32 = 600;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -227,7 +231,7 @@ async fn ai_request(query: String, window: Window) -> Result<(), String> {
             Message {
                 role: "user".to_string(),
                 content: query,
-            }
+            },
         ],
         stream: true,
     };
@@ -290,7 +294,7 @@ async fn ai_request(query: String, window: Window) -> Result<(), String> {
                 }
             }
         }
-        
+
         // Remove processed part of buffer
         if start > 0 {
             buffer = buffer[start..].to_string();
@@ -469,34 +473,90 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-async fn show_window(window: Window) -> Result<(), String> {
-    window.show().map_err(|e| e.to_string())?;
-    window.set_focus().map_err(|e| e.to_string())?;
-    Ok(())
-}
+async fn show_window(window: Window) {
+    if !window.is_visible().unwrap_or(false) {
+        if let Some(monitor) = window.current_monitor().unwrap_or(None) {
+            let monitor_size = monitor.size();
+            // Use constant dimensions for positioning
+            let window_width = DEFAULT_WINDOW_WIDTH;
+            let window_height = DEFAULT_WINDOW_HEIGHT;
 
-#[tauri::command]
-async fn hide_window(window: Window) -> Result<(), String> {
-    window.hide().map_err(|e| e.to_string())?;
-    Ok(())
-}
+            let x = (monitor_size.width as i32 - window_width as i32) / 2 + monitor.position().x;
+            let y = (monitor_size.height as i32 - window_height as i32) / 3 + monitor.position().y; // Position slightly higher than center
 
-#[tauri::command]
-async fn toggle_window(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("main") {
-        if window.is_visible().map_err(|e| e.to_string())? {
-            window.hide().map_err(|e| e.to_string())?;
-        } else {
-            window.show().map_err(|e| e.to_string())?;
-            window.set_focus().map_err(|e| e.to_string())?;
+            window.set_position(PhysicalPosition::new(x, y)).ok();
         }
+        window.set_always_on_top(true).ok();
+        window.show().ok();
+        sleep(Duration::from_millis(50)).await; // Small delay
+        if let Err(e) = window.set_focus() {
+            eprintln!("Error setting focus on window '{}': {}", window.label(), e);
+        }
+        window
+            .request_user_attention(Some(UserAttentionType::Informational))
+            .ok();
+    } else {
+        sleep(Duration::from_millis(50)).await; // Small delay even if already visible
+        if let Err(e) = window.set_focus() {
+            eprintln!(
+                "Error setting focus on already visible window '{}': {}",
+                window.label(),
+                e
+            );
+        }
+        window
+            .request_user_attention(Some(UserAttentionType::Informational))
+            .ok();
     }
-    Ok(())
+}
+
+#[tauri::command]
+async fn hide_window(window: Window) {
+    if window.is_visible().unwrap_or(false) {
+        window.hide().ok();
+    }
+}
+
+#[tauri::command]
+async fn toggle_window(window: Window) {
+    if window.is_visible().unwrap_or(false) {
+        window.hide().ok();
+    } else {
+        if let Some(monitor) = window.current_monitor().unwrap_or(None) {
+            let monitor_size = monitor.size();
+            // Use constant dimensions for positioning
+            let window_width = DEFAULT_WINDOW_WIDTH;
+            let window_height = DEFAULT_WINDOW_HEIGHT;
+
+            let x = (monitor_size.width as i32 - window_width as i32) / 2 + monitor.position().x;
+            let y = (monitor_size.height as i32 - window_height as i32) / 3 + monitor.position().y;
+
+            window.set_position(PhysicalPosition::new(x, y)).ok();
+        }
+        window.set_always_on_top(true).ok();
+        window.show().ok();
+        sleep(Duration::from_millis(50)).await; // Small delay
+        if let Err(e) = window.set_focus() {
+            eprintln!("Error setting focus on window '{}': {}", window.label(), e);
+        }
+        window
+            .request_user_attention(Some(UserAttentionType::Informational))
+            .ok();
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            println!("New instance with args: {:?}, cwd: {}", argv, cwd);
+            if argv.contains(&"--toggle-visibility".to_string()) {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.emit("toggle_window_event", ());
+                }
+            }
+        }))
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             greet,
@@ -510,26 +570,43 @@ pub fn run() {
             ai_request
         ])
         .setup(|app| {
-            if let Some(window) = app.get_webview_window("main") {
-                // ...existing window setup...
+            let window = app.get_webview_window("main").unwrap();
 
-                let window_width = 700;
-                let window_height = 600;
-                
-                if let Ok(monitor) = window.current_monitor() {
-                    if let Some(monitor) = monitor {
-                        let monitor_size = monitor.size();
-                        
-                        // Center horizontally
-                        let x = (monitor_size.width as i32 - window_width) / 2;
-                        
-                        // Position vertically between top and center (at 1/4 of screen height)
-                        let y = monitor_size.height as i32 / 4;
-                        
-                        let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }));
+            // Initial positioning attempt
+            if let Some(monitor) = window.current_monitor().unwrap_or(None) {
+                let monitor_size = monitor.size();
+                let window_width = DEFAULT_WINDOW_WIDTH;
+                let window_height = DEFAULT_WINDOW_HEIGHT;
+
+                let x =
+                    (monitor_size.width as i32 - window_width as i32) / 2 + monitor.position().x;
+                let y =
+                    (monitor_size.height as i32 - window_height as i32) / 3 + monitor.position().y;
+
+                window.set_position(PhysicalPosition::new(x, y)).ok();
+            }
+
+            let handle = app.handle().clone(); // handle is an AppHandle
+            window.on_window_event(move |event| match event {
+                tauri::WindowEvent::Focused(focused) => {
+                    if !focused {
+                        // Check if the window is still visible before hiding.
+                        // This avoids trying to hide an already hidden window, which might cause issues.
+                        let main_window = handle.get_webview_window("main");
+                        if let Some(mw) = main_window {
+                            if mw.is_visible().unwrap_or(false) {
+                                // Optional: Add a small delay to see if focus returns quickly (e.g. to a dialog)
+                                // std::thread::sleep(std::time::Duration::from_millis(100));
+                                // if !mw.is_focused().unwrap_or(false) {
+                                //     mw.hide().ok();
+                                // }
+                                mw.hide().ok();
+                            }
+                        }
                     }
                 }
-            }
+                _ => {}
+            });
             Ok(())
         })
         .run(tauri::generate_context!())
