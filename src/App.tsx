@@ -26,6 +26,9 @@ function App() {
       try {
         const loadedConfig: Config = await invoke("get_config");
         setConfig(loadedConfig);
+
+        // Set initial window size to compact
+        await invoke("resize_window", { compact: true });
       } catch (error) {
         console.error("Failed to load config:", error);
       }
@@ -138,6 +141,9 @@ function App() {
           setAiResponse("");
           setIsAiStreaming(false);
           setShowContent(false);
+          setShowSettings(false);
+          await invoke("set_focus_hiding_disabled", { disabled: false });
+          await invoke("resize_window", { compact: true });
           await invoke("hide_window");
         } catch (error) {
           console.error("Failed to hide window:", error);
@@ -162,6 +168,26 @@ function App() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [results, selectedIndex]);
+
+  useEffect(() => {
+    const handleSettingsResize = async () => {
+      try {
+        if (showSettings) {
+          // Disable focus hiding when settings are open to prevent dropdown issues
+          await invoke("set_focus_hiding_disabled", { disabled: true });
+          await invoke("resize_window", { compact: false });
+        } else {
+          // Re-enable focus hiding when settings are closed
+          await invoke("set_focus_hiding_disabled", { disabled: false });
+          await invoke("resize_window", { compact: !showContent });
+        }
+      } catch (error) {
+        console.error("Failed to handle settings resize:", error);
+      }
+    };
+
+    handleSettingsResize();
+  }, [showSettings, showContent]);
 
   const executeAction = async (result: SearchResult) => {
     try {
@@ -253,7 +279,7 @@ function App() {
   }
 
   return (
-    <div className="flex w-full flex-col h-screen bg-transparent text-gray-800 relative">
+    <div className="flex w-full flex-col h-screen bg-transparent text-gray-800 relative page-transition">
       <div className="w-full h-full m-3 max-w-2xl mx-auto flex flex-col space-y-0 relative">
         <SearchBar
           query={query}
@@ -263,17 +289,6 @@ function App() {
           isInitialEmptyState={!showContent && !query}
           onSettingsClick={() => setShowSettings(true)}
         />
-
-        {/* {isLoading && !isAiStreaming && (
-          <div className="text-center p-4 text-gray-600 loading-fade-in">
-            <div className="flex items-center justify-center gap-2">
-              <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-pulse"></div>
-              <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-pulse delay-150"></div>
-              <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-pulse delay-300"></div>
-              <span className="ml-2">Searching...</span>
-            </div>
-          </div>
-        )} */}
 
         {showContent && (
           <div className="overflow-y-auto p-3 flex-grow mt-3 glass-panel-enhanced rounded-3xl max-h-[calc(100vh-120px)] content-fade-in">
@@ -288,13 +303,13 @@ function App() {
               />
             ) : (
               results.length > 0 && (
-                <ul className="space-y-2">
+                <div className="space-y-3">
                   {results.map((result, index) => (
-                    <li
+                    <div
                       key={result.id}
+                      className="result-stagger-enter"
                       style={{
-                        animationDelay: `${index * 0.05}s`,
-                        animation: "fadeInUp 0.3s ease-out forwards",
+                        animationDelay: `${index * 0.08}s`,
                       }}
                     >
                       <SearchResultItem
@@ -302,9 +317,9 @@ function App() {
                         isSelected={index === selectedIndex}
                         onClick={() => handleResultClick(result)}
                       />
-                    </li>
+                    </div>
                   ))}
-                </ul>
+                </div>
               )
             )}
             {!isLoading &&
@@ -312,8 +327,27 @@ function App() {
               !aiResponse &&
               results.length === 0 &&
               query && (
-                <div className="p-4 text-center text-gray-500 loading-fade-in">
-                  No results found.
+                <div className="text-center py-8 loading-fade-in">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100/60 flex items-center justify-center">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      className="w-8 h-8 text-gray-400"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-800 mb-2">
+                    No results found
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    Try a different search term or use "/" for AI assistance
+                  </p>
                 </div>
               )}
           </div>

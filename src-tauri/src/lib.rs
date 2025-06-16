@@ -1,11 +1,20 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tauri::{Emitter, Manager, PhysicalPosition, UserAttentionType, Window};
+use std::sync::{Arc, Mutex, OnceLock};
+use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, UserAttentionType, Window};
 use tokio::time::{sleep, Duration}; // Added tokio::time for sleep
 use tokio_stream::StreamExt;
 
+// Global state to track if focus hiding should be disabled
+static FOCUS_HIDING_DISABLED: OnceLock<Arc<Mutex<bool>>> = OnceLock::new();
+
+fn get_focus_hiding_disabled() -> &'static Arc<Mutex<bool>> {
+    FOCUS_HIDING_DISABLED.get_or_init(|| Arc::new(Mutex::new(false)))
+}
+
 const DEFAULT_WINDOW_WIDTH: u32 = 700;
 const DEFAULT_WINDOW_HEIGHT: u32 = 600;
+const COMPACT_WINDOW_HEIGHT: u32 = 110; // Height when only search bar is shown
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -545,6 +554,27 @@ async fn toggle_window(window: Window) {
     }
 }
 
+#[tauri::command]
+async fn resize_window(window: Window, compact: bool) {
+    let height = if compact {
+        COMPACT_WINDOW_HEIGHT
+    } else {
+        DEFAULT_WINDOW_HEIGHT
+    };
+
+    // Set the new size
+    if let Err(e) = window.set_size(PhysicalSize::new(DEFAULT_WINDOW_WIDTH, height)) {
+        eprintln!("Error resizing window: {}", e);
+    }
+}
+
+#[tauri::command]
+async fn set_focus_hiding_disabled(disabled: bool) {
+    if let Ok(mut focus_disabled) = get_focus_hiding_disabled().lock() {
+        *focus_disabled = disabled;
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -563,11 +593,13 @@ pub fn run() {
             show_window,
             hide_window,
             toggle_window,
+            resize_window,
             search,
             execute_action,
             get_config,
             save_config,
-            ai_request
+            ai_request,
+            set_focus_hiding_disabled
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
@@ -590,17 +622,27 @@ pub fn run() {
             window.on_window_event(move |event| match event {
                 tauri::WindowEvent::Focused(focused) => {
                     if !focused {
-                        // Check if the window is still visible before hiding.
-                        // This avoids trying to hide an already hidden window, which might cause issues.
-                        let main_window = handle.get_webview_window("main");
-                        if let Some(mw) = main_window {
-                            if mw.is_visible().unwrap_or(false) {
-                                // Optional: Add a small delay to see if focus returns quickly (e.g. to a dialog)
-                                // std::thread::sleep(std::time::Duration::from_millis(100));
-                                // if !mw.is_focused().unwrap_or(false) {
-                                //     mw.hide().ok();
-                                // }
-                                mw.hide().ok();
+                        // Check if focus hiding is disabled (e.g., when settings are open)
+                        let should_hide = get_focus_hiding_disabled()
+                            .lock()
+                            .map(|disabled| !*disabled)
+                            .unwrap_or(true);
+
+                        if should_hide {
+                            // Check if the window is still visible before hiding.
+                            let main_window = handle.get_webview_window("main");
+                            if let Some(mw) = main_window {
+                                if mw.is_visible().unwrap_or(false) {
+                                    // Add a delay to see if focus returns quickly (e.g. for dropdowns, popups)
+                                    let mw_clone = mw.clone();
+                                    std::thread::spawn(move || {
+                                        std::thread::sleep(std::time::Duration::from_millis(150));
+                                        // Only hide if still not focused after the delay
+                                        if !mw_clone.is_focused().unwrap_or(true) {
+                                            mw_clone.hide().ok();
+                                        }
+                                    });
+                                }
                             }
                         }
                     }
